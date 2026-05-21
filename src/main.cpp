@@ -6,22 +6,22 @@ pros::Motor frontRight(-2, pros::v5::MotorGears::green, pros::v5::MotorUnits::de
 pros::Motor backLeft(3, pros::v5::MotorGears::green, pros::v5::MotorUnits::degrees);
 pros::Motor backRight(-4, pros::v5::MotorGears::green, pros::v5::MotorUnits::degrees);
 
-class CustomIMU : public pros::IMU {
-  public:
-    CustomIMU(int port, double scalar)
-      : pros::IMU(port),
-        m_port(port),
-        m_scalar(scalar) {}
-    virtual double get_rotation() const {
-      return pros::c::imu_get_rotation(m_port) * m_scalar;
-    }
-  private:
-    const int m_port;
-    const double m_scalar;
-};
+CustomIMU::CustomIMU(std::uint8_t port, double scalar)
+	: pros::Imu(port),
+	  m_scalar(scalar) {}
 
+double CustomIMU::get_rotation() const {
+	return pros::c::imu_get_rotation(_port) * m_scalar;
+}
 
-CustomIMU s_imu(1, 1.0); // checked
+double CustomIMU::get_heading() const {
+	double heading = pros::c::imu_get_heading(_port) * m_scalar;
+	while (heading >= 360.0) heading -= 360.0;
+	while (heading < 0.0) heading += 360.0;
+	return heading;
+}
+
+CustomIMU imu(1, 1.0); // checked
 // pros::Imu imu(5);
 
 const double wheelDiameter = 3.25;
@@ -35,7 +35,7 @@ const int defaultDriveVoltage = 9000;
 const int defaultTurnVoltage = 8000;
 
 void initialize() {
-	s_imu.reset(true);
+	imu.reset(true);
 }
 
 void autonomous() {

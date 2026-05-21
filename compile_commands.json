@@ -32,11 +32,11 @@
             "-funwind-tables",
             "--std=gnu++26",
             "-o",
-            "bin/main.cpp.o",
-            "src/main.cpp"
+            "bin/motion.cpp.o",
+            "src/motion.cpp"
         ],
         "directory": "/Users/nicksonc/Desktop/VexProjects/SimpleX",
-        "file": "src/main.cpp"
+        "file": "src/motion.cpp"
     },
     {
         "arguments": [
@@ -71,10 +71,10 @@
             "-funwind-tables",
             "--std=gnu++26",
             "-o",
-            "bin/motion.cpp.o",
-            "src/motion.cpp"
+            "bin/main.cpp.o",
+            "src/main.cpp"
         ],
         "directory": "/Users/nicksonc/Desktop/VexProjects/SimpleX",
-        "file": "src/motion.cpp"
+        "file": "src/main.cpp"
     }
 ]

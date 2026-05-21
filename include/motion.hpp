@@ -3,7 +3,18 @@
 
 #include "main.h"
 
-extern pros::Imu imu;
+class CustomIMU : public pros::Imu {
+  public:
+	CustomIMU(std::uint8_t port, double scalar);
+
+	double get_rotation() const override;
+	double get_heading() const override;
+
+  private:
+	const double m_scalar;
+};
+
+extern CustomIMU imu;
 extern pros::Motor frontLeft;
 extern pros::Motor frontRight;
 extern pros::Motor backLeft;
