@@ -19,11 +19,36 @@ double headingError(double target, double current) {
 	return error;
 }
 
+int clampPower(double output, int maxPower) {
+	const int power = std::clamp(static_cast<int>(output), -maxPower, maxPower);
+	if (power == 0) return 0;
+	if (std::abs(power) < 13) return power > 0 ? 13 : -13;
+	return power;
+}
+
 void stopDrive() {
 	frontLeft.brake();
 	frontRight.brake();
 	backLeft.brake();
 	backRight.brake();
+}
+
+void arcadeDrive(int forward, int strafe, int turn) {
+	const int deadband = 5;
+
+	if (std::abs(forward) < deadband) forward = 0;
+	if (std::abs(strafe) < deadband) strafe = 0;
+	if (std::abs(turn) < deadband) turn = 0;
+
+	const int fl = std::clamp(forward + strafe + turn, -127, 127);
+	const int fr = std::clamp(forward - strafe - turn, -127, 127);
+	const int bl = std::clamp(forward - strafe + turn, -127, 127);
+	const int br = std::clamp(forward + strafe - turn, -127, 127);
+
+	frontLeft.move(fl);
+	frontRight.move(fr);
+	backLeft.move(bl);
+	backRight.move(br);
 }
 
 double averageDrivePosition() {
@@ -32,7 +57,10 @@ double averageDrivePosition() {
 	       4.0;
 }
 
-void driveDistance(double inches, int maxVoltage) {
+void driveDistance(double inches, int maxPower) {
+	genesis::PID lateralPid(lateralController.kP, lateralController.kI, lateralController.kD, lateralController.antiWindupRange);
+	lateralPid.reset();
+
 	frontLeft.tare_position();
 	frontRight.tare_position();
 	backLeft.tare_position();
@@ -41,13 +69,13 @@ void driveDistance(double inches, int maxVoltage) {
 	const double target = std::abs(inches) * wheelTravelPerInch();
 	const int direction = inches >= 0.0 ? 1 : -1;
 
-	while (target - averageDrivePosition() > driveTolerance * wheelTravelPerInch()) {
+	while (target - averageDrivePosition() > lateralController.smallErrorRange * wheelTravelPerInch()) {
 		const double error = target - averageDrivePosition();
-		const int voltage = direction * std::clamp(static_cast<int>(error * driveKp), 1200, maxVoltage);
-		frontLeft.move_voltage(voltage);
-		frontRight.move_voltage(voltage);
-		backLeft.move_voltage(voltage);
-		backRight.move_voltage(voltage);
+		const int power = direction * clampPower(lateralPid.update(error), maxPower);
+		frontLeft.move(power);
+		frontRight.move(power);
+		backLeft.move(power);
+		backRight.move(power);
 		pros::delay(10);
 	}
 
@@ -58,7 +86,10 @@ void driveDistance(double inches, int maxVoltage) {
 	poseY += inches * std::cos(headingRad);
 }
 
-void strafeDistance(double inches, int maxVoltage) {
+void strafeDistance(double inches, int maxPower) {
+	genesis::PID lateralPid(lateralController.kP, lateralController.kI, lateralController.kD, lateralController.antiWindupRange);
+	lateralPid.reset();
+
 	frontLeft.tare_position();
 	frontRight.tare_position();
 	backLeft.tare_position();
@@ -67,13 +98,13 @@ void strafeDistance(double inches, int maxVoltage) {
 	const double target = std::abs(inches) * wheelTravelPerInch();
 	const int direction = inches >= 0.0 ? 1 : -1;
 
-	while (target - averageDrivePosition() > driveTolerance * wheelTravelPerInch()) {
+	while (target - averageDrivePosition() > lateralController.smallErrorRange * wheelTravelPerInch()) {
 		const double error = target - averageDrivePosition();
-		const int voltage = direction * std::clamp(static_cast<int>(error * driveKp), 1200, maxVoltage);
-		frontLeft.move_voltage(voltage);
-		frontRight.move_voltage(-voltage);
-		backLeft.move_voltage(-voltage);
-		backRight.move_voltage(voltage);
+		const int power = direction * clampPower(lateralPid.update(error), maxPower);
+		frontLeft.move(power);
+		frontRight.move(-power);
+		backLeft.move(-power);
+		backRight.move(power);
 		pros::delay(10);
 	}
 
@@ -84,14 +115,17 @@ void strafeDistance(double inches, int maxVoltage) {
 	poseY -= inches * std::sin(headingRad);
 }
 
-void turnToHeading(double heading, int maxVoltage) {
+void turnToHeading(double heading, int maxPower) {
+	genesis::PID angularPid(angularController.kP, angularController.kI, angularController.kD, angularController.antiWindupRange);
+	angularPid.reset();
+
 	double error = headingError(heading, imu.get_heading());
-	while (std::abs(error) > turnTolerance) {
-		const int voltage = std::clamp(static_cast<int>(error * turnKp), -maxVoltage, maxVoltage);
-		frontLeft.move_voltage(voltage);
-		frontRight.move_voltage(-voltage);
-		backLeft.move_voltage(voltage);
-		backRight.move_voltage(-voltage);
+	while (std::abs(error) > angularController.smallErrorRange) {
+		const int power = clampPower(angularPid.update(error), maxPower);
+		frontLeft.move(power);
+		frontRight.move(-power);
+		backLeft.move(power);
+		backRight.move(-power);
 		pros::delay(10);
 		error = headingError(heading, imu.get_heading());
 	}
@@ -99,12 +133,17 @@ void turnToHeading(double heading, int maxVoltage) {
 	stopDrive();
 }
 
-void turnToPoint(double x, double y, int maxVoltage) {
+void turnToPoint(double x, double y, int maxPower) {
 	const double heading = std::atan2(x - poseX, y - poseY) * 180.0 / kPi;
-	turnToHeading(heading < 0.0 ? heading + 360.0 : heading, maxVoltage);
+	turnToHeading(heading < 0.0 ? heading + 360.0 : heading, maxPower);
 }
 
-void moveToPose(double x, double y, double theta, int maxVoltage) {
+void moveToPose(double x, double y, double theta, int maxPower) {
+	genesis::PID lateralPid(lateralController.kP, lateralController.kI, lateralController.kD, lateralController.antiWindupRange);
+	genesis::PID angularPid(angularController.kP, angularController.kI, angularController.kD, angularController.antiWindupRange);
+	lateralPid.reset();
+	angularPid.reset();
+
 	double dx = x - poseX;
 	double dy = y - poseY;
 	double distance = std::hypot(dx, dy);
@@ -118,22 +157,26 @@ void moveToPose(double x, double y, double theta, int maxVoltage) {
 	double lastBl = 0.0;
 	double lastBr = 0.0;
 
-	while (distance > driveTolerance || std::abs(headingError(theta, imu.get_heading())) > turnTolerance) {
+	while (distance > lateralController.smallErrorRange ||
+	       std::abs(headingError(theta, imu.get_heading())) > angularController.smallErrorRange) {
 		const double headingRad = imu.get_heading() * kPi / 180.0;
 		const double forward = dx * std::sin(headingRad) + dy * std::cos(headingRad);
 		const double strafe = dx * std::cos(headingRad) - dy * std::sin(headingRad);
-		const double turn = headingError(theta, imu.get_heading()) * moveTurnKp / moveKp;
+		const double lateralPower = lateralPid.update(distance);
+		const double turn = angularPid.update(headingError(theta, imu.get_heading()));
+		const double forwardPower = distance == 0.0 ? 0.0 : lateralPower * forward / distance;
+		const double strafePower = distance == 0.0 ? 0.0 : lateralPower * strafe / distance;
 
-		double fl = (forward + strafe) * moveKp + turn * moveKp;
-		double fr = (forward - strafe) * moveKp - turn * moveKp;
-		double bl = (forward - strafe) * moveKp + turn * moveKp;
-		double br = (forward + strafe) * moveKp - turn * moveKp;
-		const double scale = std::max({static_cast<double>(maxVoltage), std::abs(fl), std::abs(fr), std::abs(bl), std::abs(br)});
+		double fl = forwardPower + strafePower + turn;
+		double fr = forwardPower - strafePower - turn;
+		double bl = forwardPower - strafePower + turn;
+		double br = forwardPower + strafePower - turn;
+		const double scale = std::max({static_cast<double>(maxPower), std::abs(fl), std::abs(fr), std::abs(bl), std::abs(br)});
 
-		frontLeft.move_voltage(static_cast<int>(fl / scale * maxVoltage));
-		frontRight.move_voltage(static_cast<int>(fr / scale * maxVoltage));
-		backLeft.move_voltage(static_cast<int>(bl / scale * maxVoltage));
-		backRight.move_voltage(static_cast<int>(br / scale * maxVoltage));
+		frontLeft.move(static_cast<int>(fl / scale * maxPower));
+		frontRight.move(static_cast<int>(fr / scale * maxPower));
+		backLeft.move(static_cast<int>(bl / scale * maxPower));
+		backRight.move(static_cast<int>(br / scale * maxPower));
 
 		pros::delay(10);
 
